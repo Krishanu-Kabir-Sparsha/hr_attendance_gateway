@@ -1,0 +1,16 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_attendance_device_user,attendance.device user,model_attendance_device,group_attendance_gateway_user,1,0,0,0
+access_attendance_device_manager,attendance.device manager,model_attendance_device,group_attendance_gateway_manager,1,1,1,1
+access_attendance_device_user_user,attendance.device.user user,model_attendance_device_user,group_attendance_gateway_user,1,0,0,0
+access_attendance_device_user_manager,attendance.device.user manager,model_attendance_device_user,group_attendance_gateway_manager,1,1,1,1
+access_attendance_raw_log_user,attendance.raw.log user,model_attendance_raw_log,group_attendance_gateway_user,1,0,0,0
+access_attendance_raw_log_manager,attendance.raw.log manager,model_attendance_raw_log,group_attendance_gateway_manager,1,1,1,1
+access_attendance_sync_log_user,attendance.sync.log user,model_attendance_sync_log,group_attendance_gateway_user,1,0,0,0
+access_attendance_sync_log_manager,attendance.sync.log manager,model_attendance_sync_log,group_attendance_gateway_manager,1,1,1,1
+access_attendance_shift_user,attendance.shift user,model_attendance_shift,group_attendance_gateway_user,1,0,0,0
+access_attendance_shift_manager,attendance.shift manager,model_attendance_shift,group_attendance_gateway_manager,1,1,1,1
+access_sync_attendance_wizard,sync.attendance.wizard,model_sync_attendance_wizard,group_attendance_gateway_user,1,1,1,1
+access_device_test_wizard,device.test.wizard,model_device_test_wizard,group_attendance_gateway_user,1,1,1,1
+access_user_mapping_wizard,user.mapping.wizard,model_user_mapping_wizard,group_attendance_gateway_manager,1,1,1,1
+access_user_mapping_wizard_line,user.mapping.wizard.line,model_user_mapping_wizard_line,group_attendance_gateway_manager,1,1,1,1
+access_manual_attendance_wizard,manual.attendance.wizard,model_manual_attendance_wizard,group_attendance_gateway_manager,1,1,1,1

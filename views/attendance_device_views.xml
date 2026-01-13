@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <!-- Tree View -->
+    <record id="view_attendance_device_tree" model="ir.ui.view">
+        <field name="name">attendance.device.tree</field>
+        <field name="model">attendance.device</field>
+        <field name="arch" type="xml">
+            <list string="Attendance Devices">
+                <field name="name"/>
+                <field name="code"/>
+                <field name="device_type"/>
+                <field name="ip_address"/>
+                <field name="state" widget="badge" decoration-success="state=='active'" decoration-danger="state=='error'"/>
+                <field name="is_online" widget="boolean_toggle"/>
+                <field name="last_sync_date"/>
+                <field name="company_id" groups="base.group_multi_company"/>
+            </list>
+        </field>
+    </record>
+    
+    <!-- Form View -->
+    <record id="view_attendance_device_form" model="ir.ui.view">
+        <field name="name">attendance.device.form</field>
+        <field name="model">attendance.device</field>
+        <field name="arch" type="xml">
+            <form string="Attendance Device">
+                <header>
+                    <button name="action_test_connection" string="Test Connection" type="object" class="oe_highlight"/>
+                    <button name="action_sync_now" string="Sync Now" type="object" class="oe_highlight" invisible="state != 'active'"/>
+                    <button name="action_fetch_users" string="Fetch Users" type="object"/>
+                    <button name="action_activate" string="Activate" type="object" invisible="state == 'active'"/>
+                    <button name="action_deactivate" string="Deactivate" type="object" invisible="state != 'active'"/>
+                    <field name="state" widget="statusbar" statusbar_visible="draft,active"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_logs" type="object" class="oe_stat_button" icon="fa-list">
+                            <field name="total_logs" widget="statinfo" string="Logs"/>
+                        </button>
+                        <button name="action_view_sync_logs" type="object" class="oe_stat_button" icon="fa-history">
+                            <div class="o_stat_info">
+                                <span class="o_stat_text">Sync History</span>
+                            </div>
+                        </button>
+                        <button name="toggle_active" type="object" class="oe_stat_button" icon="fa-archive">
+                            <field name="active" widget="boolean_button" options="{'terminology': 'archive'}"/>
+                        </button>
+                    </div>
+                    
+                    <widget name="web_ribbon" title="Online" bg_color="text-bg-success" invisible="not is_online"/>
+                    <widget name="web_ribbon" title="Offline" bg_color="text-bg-danger" invisible="is_online"/>
+                    
+                    <div class="oe_title">
+                        <label for="name"/>
+                        <h1><field name="name" placeholder="e.g. Main Entrance Device"/></h1>
+                    </div>
+                    
+                    <group>
+                        <group>
+                            <field name="code"/>
+                            <field name="device_type"/>
+                            <field name="connection_type"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                        </group>
+                        <group>
+                            <field name="timezone"/>
+                            <field name="sync_mode"/>
+                            <field name="auto_sync"/>
+                            <field name="sync_interval" invisible="not auto_sync"/>
+                        </group>
+                    </group>
+                    
+                    <notebook>
+                        <page string="Connection" name="connection">
+                            <group>
+                                <group string="TCP/IP Settings" invisible="connection_type != 'tcp'">
+                                    <field name="ip_address"/>
+                                    <field name="port"/>
+                                    <field name="username"/>
+                                    <field name="password" password="True"/>
+                                </group>
+                                <group string="API Settings" invisible="connection_type != 'http'">
+                                    <field name="api_url"/>
+                                    <field name="api_key" password="True"/>
+                                    <field name="api_secret" password="True"/>
+                                    <field name="username"/>
+                                    <field name="password" password="True"/>
+                                </group>
+                                <group string="Webhook Settings" invisible="connection_type != 'webhook'">
+                                    <field name="webhook_token" password="True"/>
+                                    <field name="webhook_url" widget="url"/>
+                                </group>
+                            </group>
+                        </page>
+                        
+                        <page string="Device Users" name="users">
+                            <field name="device_user_ids">
+                                <list editable="bottom">
+                                    <field name="device_user_id"/>
+                                    <field name="device_user_name"/>
+                                    <field name="employee_id"/>
+                                    <field name="card_number"/>
+                                    <field name="last_sync_date"/>
+                                </list>
+                            </field>
+                        </page>
+                        
+                        <page string="Statistics" name="stats">
+                            <group>
+                                <group>
+                                    <field name="total_users"/>
+                                    <field name="total_logs"/>
+                                </group>
+                                <group>
+                                    <field name="last_sync_date"/>
+                                    <field name="last_log_date"/>
+                                    <field name="is_online"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+    
+    <!-- Action -->
+    <record id="action_attendance_device" model="ir.actions.act_window">
+        <field name="name">Attendance Devices</field>
+        <field name="res_model">attendance.device</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first attendance device
+            </p>
+            <p>
+                Connect biometric devices, access control systems, or any attendance hardware to Odoo.
+            </p>
+        </field>
+    </record>
+    
+</odoo>

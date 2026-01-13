@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Root Menu -->
+    <menuitem id="menu_attendance_gateway_root"
+              name="Attendance Gateway"
+              sequence="60"
+              web_icon="hr_attendance_gateway,static/description/icon.png"/>
+
+    <!-- Devices Menu -->
+    <menuitem id="menu_attendance_devices"
+              name="Devices"
+              parent="menu_attendance_gateway_root"
+              sequence="10"/>
+
+    <menuitem id="menu_attendance_device_list"
+              name="Attendance Devices"
+              parent="menu_attendance_devices"
+              action="action_attendance_device"
+              sequence="10"/>
+
+    <menuitem id="menu_attendance_device_users"
+              name="Device User Mappings"
+              parent="menu_attendance_devices"
+              action="action_attendance_device_user"
+              sequence="20"/>
+
+    <!-- Logs Menu -->
+    <menuitem id="menu_attendance_logs"
+              name="Logs"
+              parent="menu_attendance_gateway_root"
+              sequence="20"/>
+
+    <menuitem id="menu_attendance_raw_logs"
+              name="Raw Logs"
+              parent="menu_attendance_logs"
+              action="action_attendance_raw_log"
+              sequence="10"/>
+
+    <menuitem id="menu_attendance_sync_logs"
+              name="Sync History"
+              parent="menu_attendance_logs"
+              action="action_attendance_sync_log"
+              sequence="20"/>
+
+    <!-- Shift Management Menu -->
+    <menuitem id="menu_shift_management"
+              name="Shift Management"
+              parent="menu_attendance_gateway_root"
+              sequence="30"/>
+
+    <menuitem id="menu_attendance_shifts"
+              name="Work Shifts"
+              parent="menu_shift_management"
+              action="action_attendance_shift"
+              sequence="10"/>
+
+    <!-- Configuration Menu -->
+    <menuitem id="menu_attendance_gateway_config"
+              name="Configuration"
+              parent="menu_attendance_gateway_root"
+              sequence="100"
+              groups="group_attendance_gateway_manager"/>
+
+</odoo>

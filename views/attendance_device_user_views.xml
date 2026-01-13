@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    
+    <record id="view_attendance_device_user_tree" model="ir.ui.view">
+        <field name="name">attendance.device.user.tree</field>
+        <field name="model">attendance.device.user</field>
+        <field name="arch" type="xml">
+            <list string="Device Users" editable="bottom" 
+                  decoration-success="employee_id and mapping_confidence == 'high'"
+                  decoration-warning="employee_id and mapping_confidence in ['medium', 'low']"
+                  decoration-danger="not employee_id">
+                <field name="device_id"/>
+                <field name="device_user_id"/>
+                <field name="device_user_name"/>
+                <field name="employee_id"/>
+                <field name="mapping_confidence" optional="show"/>
+                <field name="mapping_method" optional="hide"/>
+                <field name="card_number"/>
+                <field name="last_sync_date"/>
+            </list>
+        </field>
+    </record>
+    
+    <record id="view_attendance_device_user_form" model="ir.ui.view">
+        <field name="name">attendance.device.user.form</field>
+        <field name="model">attendance.device.user</field>
+        <field name="arch" type="xml">
+            <form string="Device User">
+                <header>
+                    <button name="action_sync_to_device" string="Sync to Device" type="object" class="oe_highlight"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="device_id"/>
+                            <field name="device_user_id"/>
+                            <field name="device_user_name"/>
+                        </group>
+                        <group>
+                            <field name="employee_id"/>
+                            <field name="card_number"/>
+                            <field name="last_sync_date"/>
+                        </group>
+                    </group>
+                    <group string="Biometric Info">
+                        <field name="has_fingerprint"/>
+                        <field name="has_face"/>
+                        <field name="has_card"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <!-- Search View -->
+    <record id="view_attendance_device_user_search" model="ir.ui.view">
+        <field name="name">attendance.device.user.search</field>
+        <field name="model">attendance.device.user</field>
+        <field name="arch" type="xml">
+            <search string="Device Users">
+                <field name="device_user_id"/>
+                <field name="device_user_name"/>
+                <field name="employee_id"/>
+                <field name="device_id"/>
+                <field name="card_number"/>
+                
+                <filter string="Unmapped" name="unmapped" 
+                        domain="[('employee_id', '=', False)]"/>
+                <filter string="Mapped" name="mapped" 
+                        domain="[('employee_id', '!=', False)]"/>
+                
+                <separator/>
+                
+                <filter string="High Confidence" name="high_confidence" 
+                        domain="[('mapping_confidence', '=', 'high')]"/>
+                <filter string="Medium Confidence" name="medium_confidence" 
+                        domain="[('mapping_confidence', '=', 'medium')]"/>
+                <filter string="Low Confidence" name="low_confidence" 
+                        domain="[('mapping_confidence', '=', 'low')]"/>
+                <filter string="Manual" name="manual" 
+                        domain="[('mapping_confidence', '=', 'manual')]"/>
+                
+                <separator/>
+                
+                <group expand="0" string="Group By">
+                    <filter string="Device" name="group_device" 
+                            context="{'group_by': 'device_id'}"/>
+                    <filter string="Employee" name="group_employee" 
+                            context="{'group_by': 'employee_id'}"/>
+                    <filter string="Mapping Confidence" name="group_confidence" 
+                            context="{'group_by': 'mapping_confidence'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+    
+    <record id="action_attendance_device_user" model="ir.actions.act_window">
+        <field name="name">Device Users</field>
+        <field name="res_model">attendance.device.user</field>
+        <field name="view_mode">list,form</field>
+    </record>
+    
+</odoo>

@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Inherit Settings Form -->
+    <record id="res_config_settings_view_form_inherit_attendance_gateway" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.attendance.gateway</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//form" position="inside">
+                <app string="Attendance Gateway" name="hr_attendance_gateway" groups="hr_attendance_gateway.group_attendance_gateway_manager">
+                    
+                    <!-- General Settings -->
+                    <block title="General Settings">
+                        <setting>
+                            <field name="attendance_gateway_auto_sync"/>
+                            <div class="content-group" invisible="not attendance_gateway_auto_sync">
+                                <div class="mt16">
+                                    <label for="attendance_gateway_sync_interval" string="Sync Interval"/>
+                                    <field name="attendance_gateway_sync_interval" class="oe_inline"/> minutes
+                                </div>
+                            </div>
+                        </setting>
+                        
+                        <setting string="Enable Webhook Endpoints">
+                            <field name="attendance_gateway_enable_webhook"/>
+                            <div class="text-muted">
+                                Allow devices to push attendance data via webhooks
+                            </div>
+                        </setting>
+                        
+                        <setting string="Auto Create Employees">
+                            <field name="attendance_gateway_auto_create_employee"/>
+                            <div class="text-muted">
+                                Automatically create employee records for unmapped device users
+                            </div>
+                        </setting>
+                    </block>
+
+                    <!-- Data Management -->
+                    <block title="Data Management">
+                        <setting string="Raw Logs Retention">
+                            <div class="text-muted">
+                                Keep raw attendance logs for
+                            </div>
+                            <div class="mt8">
+                                <field name="attendance_gateway_keep_raw_logs" class="oe_inline"/> days
+                                <span class="text-muted">(0 = keep forever)</span>
+                            </div>
+                        </setting>
+                        
+                        <setting string="Sync Logs Retention">
+                            <div class="text-muted">
+                                Keep sync history logs for
+                            </div>
+                            <div class="mt8">
+                                <field name="attendance_gateway_keep_sync_logs" class="oe_inline"/> days
+                                <span class="text-muted">(0 = keep forever)</span>
+                            </div>
+                        </setting>
+                        
+                        <setting string="Duplicate Detection">
+                            <div class="text-muted">
+                                Time window to detect duplicate records
+                            </div>
+                            <div class="mt8">
+                                <field name="attendance_gateway_duplicate_threshold" class="oe_inline"/> seconds
+                            </div>
+                        </setting>
+                    </block>
+
+                    <!-- Attendance Validation -->
+                    <block title="Attendance Validation">
+                        <setting string="Validate Work Duration">
+                            <field name="attendance_gateway_validate_work_duration"/>
+                            <div class="text-muted">
+                                Enable validation of attendance work duration
+                            </div>
+                            <div class="content-group" invisible="not attendance_gateway_validate_work_duration">
+                                <div class="row mt16">
+                                    <div class="col-6">
+                                        <label for="attendance_gateway_min_work_duration" string="Minimum Duration"/>
+                                        <div>
+                                            <field name="attendance_gateway_min_work_duration" class="oe_inline"/> hours
+                                        </div>
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="attendance_gateway_max_work_duration" string="Maximum Duration"/>
+                                        <div>
+                                            <field name="attendance_gateway_max_work_duration" class="oe_inline"/> hours
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </setting>
+                    </block>
+
+                    <!-- Notifications -->
+                    <block title="Notifications">
+                        <setting string="Error Notification Email">
+                            <div class="text-muted">
+                                Email address to receive sync error notifications
+                            </div>
+                            <field name="attendance_gateway_notification_email" placeholder="admin@example.com"/>
+                        </setting>
+                    </block>
+
+                    <!-- Statistics -->
+                    <block title="Statistics">
+                        <setting>
+                            <div class="row">
+                                <div class="col-6">
+                                    <label for="attendance_gateway_device_count" string="Total Devices"/>
+                                    <div><field name="attendance_gateway_device_count" readonly="1"/></div>
+                                </div>
+                                <div class="col-6">
+                                    <label for="attendance_gateway_active_device_count" string="Active Devices"/>
+                                    <div><field name="attendance_gateway_active_device_count" readonly="1"/></div>
+                                </div>
+                            </div>
+                            <div class="row mt8">
+                                <div class="col-6">
+                                    <label for="attendance_gateway_pending_logs" string="Pending Logs"/>
+                                    <div><field name="attendance_gateway_pending_logs" readonly="1"/></div>
+                                </div>
+                                <div class="col-6">
+                                    <label for="attendance_gateway_error_logs" string="Error Logs"/>
+                                    <div><field name="attendance_gateway_error_logs" readonly="1"/></div>
+                                </div>
+                            </div>
+                        </setting>
+                    </block>
+
+                    <!-- Maintenance Actions -->
+                    <block title="Maintenance Actions">
+                        <setting>
+                            <button name="action_sync_all_devices" 
+                                    string="Sync All Devices Now" 
+                                    type="object" 
+                                    class="btn-primary me-2"/>
+                            <button name="action_reprocess_error_logs" 
+                                    string="Reprocess Error Logs" 
+                                    type="object" 
+                                    class="btn-secondary me-2"/>
+                            <button name="action_clean_old_logs" 
+                                    string="Clean Old Logs" 
+                                    type="object" 
+                                    class="btn-secondary"
+                                    confirm="This will permanently delete old logs. Continue?"/>
+                        </setting>
+                    </block>
+
+                </app>
+            </xpath>
+        </field>
+    </record>
+</odoo>
