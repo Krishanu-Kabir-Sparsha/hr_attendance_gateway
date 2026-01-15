@@ -1,4 +1,4 @@
-from odoo import models, fields, _
+from odoo import models, fields, api, _
 from datetime import timedelta
 import logging
 
@@ -7,10 +7,10 @@ _logger = logging.getLogger(__name__)
 
 class AttendanceProcessor(models.AbstractModel):
     _name = 'attendance.processor'
-    _description = 'Attendance Log Processor'
+    _description = 'Attendance Processor'
 
     def process_raw_logs(self, device, raw_logs):
-        """Process multiple raw logs with batch optimization"""
+        """Process multiple raw logs from device"""
         result = {
             'fetched': len(raw_logs),
             'processed': 0,
@@ -19,42 +19,58 @@ class AttendanceProcessor(models.AbstractModel):
             'ignored': 0
         }
 
-        if not raw_logs:
+        if not raw_logs: 
             return result
 
         # Pre-load device users
-        device_users_map = self._get_device_users_map(device)
+        device_users = {}
+        for du in self.env['attendance.device.user'].search([
+            ('device_id', '=', device.id),
+            ('active', '=', True)
+        ]):
+            device_users[du.device_user_id] = du
 
-        # Pre-load employees' open attendances
-        employee_ids = [du.employee_id.id for du in device_users_map.values() if du.employee_id]
-        open_attendances = self._get_open_attendances(employee_ids)
-
-        # Get duplicate threshold (in seconds)
-        duplicate_threshold = int(self.env['ir.config_parameter'].sudo().get_param(
+        # Get duplicate threshold
+        dup_threshold = int(self.env['ir.config_parameter'].sudo().get_param(
             'attendance_gateway.duplicate_threshold', 60
         ))
 
-        raw_logs_to_create = []
+        # Sort by timestamp for chronological processing
+        try:
+            raw_logs = sorted(raw_logs, key=lambda x: x.get('timestamp', ''))
+        except Exception as e:
+            _logger.warning(f"Could not sort logs: {e}")
 
         for log_data in raw_logs:
-            try:
-                device_user_id = str(log_data['device_user_id'])
+            try: 
+                device_user_id = str(log_data.get('device_user_id', ''))
+                if not device_user_id:
+                    result['failed'] += 1
+                    continue
+
+                timestamp = log_data.get('timestamp')
+                if not timestamp:
+                    result['failed'] += 1
+                    continue
+
+                # Convert timestamp
+                if isinstance(timestamp, str):
+                    timestamp = fields.Datetime.to_datetime(timestamp)
 
                 # Check for exact duplicate
                 existing = self.env['attendance.raw.log'].search([
                     ('device_id', '=', device.id),
                     ('device_user_id', '=', device_user_id),
-                    ('timestamp', '=', log_data['timestamp'])
+                    ('timestamp', '=', timestamp)
                 ], limit=1)
 
-                if existing:
+                if existing: 
                     result['duplicates'] += 1
                     continue
 
-                # Check for near-duplicate (same user, within threshold seconds)
-                timestamp = fields.Datetime.to_datetime(log_data['timestamp'])
-                time_start = timestamp - timedelta(seconds=duplicate_threshold)
-                time_end = timestamp + timedelta(seconds=duplicate_threshold)
+                # Check for near-duplicate
+                time_start = timestamp - timedelta(seconds=dup_threshold)
+                time_end = timestamp + timedelta(seconds=dup_threshold)
 
                 near_duplicate = self.env['attendance.raw.log'].search([
                     ('device_id', '=', device.id),
@@ -64,351 +80,315 @@ class AttendanceProcessor(models.AbstractModel):
                     ('state', 'in', ['processed', 'pending'])
                 ], limit=1)
 
-                if near_duplicate: 
+                if near_duplicate:
                     result['duplicates'] += 1
                     continue
 
-                # Store original device punch_type for reference, but we'll override it later
-                raw_logs_to_create.append({
+                # Get punch type from device (important!)
+                device_punch_type = str(log_data.get('punch_type', '0'))
+
+                # Create raw log
+                raw_log = self.env['attendance.raw.log'].create({
                     'device_id': device.id,
                     'device_user_id': device_user_id,
-                    'timestamp': log_data['timestamp'],
-                    'punch_type': '0',  # Default, will be set correctly during processing
-                    'device_punch_type': str(log_data.get('punch_type', '0')),  # Store original
+                    'timestamp': timestamp,
+                    'punch_type': device_punch_type,
                     'raw_data': str(log_data.get('raw_data', {})),
                     'state': 'pending'
                 })
 
-            except Exception as e:
-                _logger.error(f"Failed to validate log: {str(e)}")
-                result['failed'] += 1
+                # Process the log
+                device_user = device_users.get(device_user_id)
+                process_result = self._process_single_log(raw_log, device_user, device)
 
-        # Bulk create and process raw logs
-        if raw_logs_to_create:
-            # Sort by timestamp to process in chronological order
-            raw_logs_to_create.sort(key=lambda x: x['timestamp'])
-            created_logs = self.env['attendance.raw.log'].create(raw_logs_to_create)
-
-            for raw_log in created_logs: 
-                try:
-                    device_user = device_users_map.get(raw_log.device_user_id)
-                    emp_id = device_user.employee_id.id if device_user and device_user.employee_id else None
-                    open_attendance = open_attendances.get(emp_id) if emp_id else None
-
-                    process_result = self.process_single_log(raw_log, device_user, open_attendance)
-
-                    if process_result.get('status') == 'processed':
-                        result['processed'] += 1
-                        # Update open attendance cache
-                        if emp_id:
-                            if process_result.get('action') == 'checkin':
-                                open_attendances[emp_id] = process_result.get('attendance')
-                            elif process_result.get('action') == 'checkout':
-                                open_attendances[emp_id] = None
-                    elif process_result.get('status') == 'ignored':
-                        result['ignored'] += 1
-                    else:
-                        result['failed'] += 1
-
-                except Exception as e:
-                    _logger.error(f"Failed to process log {raw_log.id}: {str(e)}", exc_info=True)
-                    raw_log.write({
-                        'state': 'error',
-                        'error_message': str(e),
-                        'processed_date': fields.Datetime.now()
-                    })
+                if process_result.get('success'):
+                    result['processed'] += 1
+                elif process_result.get('ignored'):
+                    result['ignored'] += 1
+                else: 
                     result['failed'] += 1
+
+            except Exception as e:
+                _logger.error(f"Failed to process log: {e}", exc_info=True)
+                result['failed'] += 1
 
         return result
 
-    def _get_device_users_map(self, device):
-        """Pre-load all device users into a dictionary"""
-        device_users = self.env['attendance.device.user'].search([
-            ('device_id', '=', device.id),
-            ('active', '=', True)
-        ])
-        return {du.device_user_id: du for du in device_users}
+    def process_single_log(self, raw_log, device_user=None):
+        """Public method to process a single log"""
+        return self._process_single_log(raw_log, device_user, raw_log.device_id)
 
-    def _get_open_attendances(self, employee_ids):
-        """Pre-load OPEN (no check_out) attendances for employees"""
-        if not employee_ids:
-            return {}
-
-        open_attendances = {}
-        attendances = self.env['hr.attendance'].search([
-            ('employee_id', 'in', employee_ids),
-            ('check_out', '=', False)
-        ])
-        for att in attendances:
-            open_attendances[att.employee_id.id] = att
-
-        return open_attendances
-
-    def _find_employee_by_badge(self, device, badge_id):
-        """Find employee by badge ID with safe field checking"""
-        Employee = self.env['hr.employee']
-        employee_fields = Employee._fields
-        company_id = device.company_id.id if device.company_id else None
-        company_domain = [('company_id', 'in', [company_id, False])] if company_id else []
-
-        # Try identification_id first (most common for badges)
-        if 'identification_id' in employee_fields:
-            employee = Employee.search([
-                ('identification_id', '=', badge_id)
-            ] + company_domain, limit=1)
-            if employee:
-                return employee, 'identification_id'
-
-        # Try barcode
-        if 'barcode' in employee_fields:
-            employee = Employee.search([
-                ('barcode', '=', badge_id)
-            ] + company_domain, limit=1)
-            if employee:
-                return employee, 'barcode'
-
-        # Try pin
-        if 'pin' in employee_fields:
-            employee = Employee.search([
-                ('pin', '=', badge_id)
-            ] + company_domain, limit=1)
-            if employee:
-                return employee, 'pin'
-
-        return None, None
-
-    def process_single_log(self, raw_log, device_user=None, open_attendance=None):
-        """
-        Process a single raw log.
-        
-        CORE LOGIC:
-        - No open attendance = CHECK IN (punch_type = '0')
-        - Has open attendance = CHECK OUT (punch_type = '1')
-        
-        We COMPLETELY IGNORE what the device sends and determine punch_type ourselves! 
-        """
-        device = raw_log.device_id
+    def _process_single_log(self, raw_log, device_user, device):
+        """Internal method to process a single punch log"""
         timestamp = raw_log.timestamp
+        result = {'success': False, 'ignored': False}
 
-        # Step 1: Get or create device user mapping
-        if not device_user:
-            device_user = self.env['attendance.device.user'].get_or_create_mapping(
-                device, raw_log.device_user_id
-            )
+        try:
+            # ===========================================
+            # STEP 1: Find or Create Employee Mapping
+            # ===========================================
+            if not device_user: 
+                device_user = self.env['attendance.device.user'].get_or_create_mapping(
+                    device, raw_log.device_user_id
+                )
 
-        # Step 2: Ensure we have an employee
-        if not device_user or not device_user.employee_id:
-            employee, match_method = self._find_employee_by_badge(device, raw_log.device_user_id)
-
-            if employee:
-                if device_user: 
-                    device_user.write({
-                        'employee_id': employee.id,
-                        'mapping_confidence': 'high',
-                        'mapping_method': f'Auto-matched during sync ({match_method})'
-                    })
+            if not device_user or not device_user.employee_id:
+                # Try to find employee by badge
+                employee = self._find_employee(device, raw_log.device_user_id)
+                if employee:
+                    if device_user: 
+                        device_user.write({
+                            'employee_id': employee.id,
+                            'mapping_confidence': 'high',
+                            'mapping_method': 'Auto-matched during sync'
+                        })
+                    else:
+                        device_user = self.env['attendance.device.user'].create({
+                            'device_id': device.id,
+                            'device_user_id': raw_log.device_user_id,
+                            'employee_id': employee.id,
+                            'mapping_confidence': 'high',
+                            'mapping_method': 'Auto-created during sync'
+                        })
                 else:
-                    device_user = self.env['attendance.device.user'].create({
-                        'device_id': device.id,
-                        'device_user_id': raw_log.device_user_id,
-                        'employee_id': employee.id,
-                        'mapping_confidence': 'high',
-                        'mapping_method': f'Auto-created during sync ({match_method})'
+                    raw_log.write({
+                        'state': 'error',
+                        'message': f'No employee found for ID: {raw_log.device_user_id}'
                     })
-            else:
-                raw_log.write({
-                    'state': 'error',
-                    'error_message': f'No employee found with ID: {raw_log.device_user_id}. '
-                                     f'Please set identification_id on employee record.',
-                    'processed_date': fields.Datetime.now()
-                })
-                return {'status': 'error'}
+                    return result
 
-        employee = device_user.employee_id
-        raw_log.employee_id = employee.id
+            employee = device_user.employee_id
+            raw_log.write({'employee_id': employee.id})
 
-        # Step 3: Get open attendance if not provided
-        if open_attendance is None:
+            # ===========================================
+            # STEP 2: Get Shift Configuration
+            # ===========================================
+            shift = self.env['attendance.shift'].get_employee_shift(employee)
+
+            min_gap = shift.min_punch_gap_minutes if shift else 1.0
+            auto_close = shift.auto_checkout_after_hours if shift else 16.0
+
+            # ===========================================
+            # STEP 3: Determine Final Punch Type
+            # ===========================================
+            # Priority: Slot-based > Device-reported > Auto-detect
+            punch_type = raw_log.punch_type or '0'
+
+            if shift and shift.use_punch_slots:
+                timezone = device.timezone or 'UTC'
+                for slot in shift.punch_slot_ids.filtered(lambda s: s.active).sorted('sequence'):
+                    if slot.is_time_in_window(timestamp, timezone):
+                        punch_type = slot.punch_type
+                        break
+
+            # ===========================================
+            # STEP 4: Find Open Attendance
+            # ===========================================
             open_attendance = self.env['hr.attendance'].search([
                 ('employee_id', '=', employee.id),
                 ('check_out', '=', False)
             ], order='check_in desc', limit=1)
 
-        # Step 4: Get configuration values
-        Shift = self.env['attendance.shift']
-        shift = None
-        if hasattr(Shift, 'get_employee_shift'):
-            shift = Shift.get_employee_shift(employee)
+            # ===========================================
+            # STEP 5: Process Based on Punch Type & State
+            # ===========================================
 
-        if shift:
-            min_interval_minutes = shift.min_punch_interval
-            auto_close_hours = shift.auto_close_hours
-        else:
-            # Use global settings as fallback
-            min_interval_minutes = float(self.env['ir.config_parameter'].sudo().get_param(
-                'attendance_gateway.min_punch_interval', 1
-            ))
-            auto_close_hours = float(self.env['ir.config_parameter'].sudo().get_param(
-                'attendance_gateway.auto_close_hours', 20
-            ))
+            # BREAK PUNCHES (2, 3) - Just record in notes
+            if punch_type in ['2', '3']:
+                return self._handle_break_punch(raw_log, employee, punch_type, timestamp, open_attendance)
 
-        # =====================================================
-        # STEP 5: DETERMINE PUNCH TYPE AND ACTION
-        # =====================================================
+            # OVERTIME PUNCHES (4, 5) - Just record in notes
+            if punch_type in ['4', '5']:
+                return self._handle_overtime_punch(raw_log, employee, punch_type, timestamp, open_attendance, shift)
 
-        # CASE A: NO OPEN ATTENDANCE -> This is a CHECK IN
-        if not open_attendance:
-            _logger.info(f"[CHECK IN] {employee.name} at {timestamp} - No open attendance")
-            return self._create_checkin(raw_log, employee, timestamp, shift)
+            # REGULAR CHECK IN/OUT (0, 1)
+            # CASE A: No open attendance
+            if not open_attendance: 
+                if punch_type == '1':
+                    # Device says checkout but no open attendance
+                    raw_log.write({
+                        'state': 'ignored',
+                        'punch_type': '1',
+                        'message': 'Check-out ignored: No open check-in found'
+                    })
+                    result['ignored'] = True
+                    return result
 
-        # CASE B: HAS OPEN ATTENDANCE -> Check time constraints
-        time_since_checkin_hours = (timestamp - open_attendance.check_in).total_seconds() / 3600
-        time_since_checkin_minutes = time_since_checkin_hours * 60
+                # Create new check-in
+                attendance = self.env['hr.attendance'].create({
+                    'employee_id': employee.id,
+                    'check_in': timestamp,
+                    'device_id': device.id,
+                    'shift_id': shift.id if shift else False,
+                    'is_from_device': True,
+                })
+                raw_log.write({
+                    'state': 'processed',
+                    'punch_type': '0',
+                    'attendance_id': attendance.id,
+                    'message': 'Check-in created'
+                })
+                _logger.info(f"CHECK IN: {employee.name} at {timestamp}")
+                result['success'] = True
+                return result
 
-        _logger.info(
-            f"[ANALYZING] {employee.name} - Open check-in from {open_attendance.check_in}, "
-            f"Duration: {time_since_checkin_minutes:.1f} min"
-        )
+            # CASE B: Has open attendance
+            hours_since = (timestamp - open_attendance.check_in).total_seconds() / 3600
+            minutes_since = hours_since * 60
 
-        # CASE B1: Too soon after check-in -> IGNORE (don't change punch_type, mark as ignored)
-        if time_since_checkin_minutes < min_interval_minutes:
-            reason = f'Punch ignored: Only {time_since_checkin_minutes:.1f} min since check-in (minimum: {min_interval_minutes} min)'
-            _logger.info(f"[IGNORED] {employee.name} - {reason}")
+            # B1: Too soon - Ignore (duplicate prevention)
+            if minutes_since < min_gap:
+                raw_log.write({
+                    'state': 'ignored',
+                    'message': f'Ignored: Only {minutes_since:.1f} min since check-in (min gap: {min_gap} min)'
+                })
+                result['ignored'] = True
+                return result
+
+            # B2: Very old attendance - Auto-close and create new check-in
+            if hours_since > auto_close:
+                # Auto-close the old attendance
+                close_time = open_attendance.check_in + timedelta(hours=auto_close)
+                open_attendance.write({
+                    'check_out': close_time,
+                    'note': f"{open_attendance.note or ''}\n⚠️ Auto-closed after {auto_close}h (missing check-out)".strip()
+                })
+                # Force status update
+                open_attendance._compute_status()
+
+                # Create new check-in
+                attendance = self.env['hr.attendance'].create({
+                    'employee_id': employee.id,
+                    'check_in': timestamp,
+                    'device_id': device.id,
+                    'shift_id': shift.id if shift else False,
+                    'is_from_device': True,
+                    'note': 'Previous attendance was auto-closed'
+                })
+                raw_log.write({
+                    'state': 'processed',
+                    'punch_type': '0',
+                    'attendance_id': attendance.id,
+                    'message': f'Check-in created (previous auto-closed after {auto_close}h)'
+                })
+                _logger.info(f"AUTO-CLOSE + CHECK IN: {employee.name}")
+                result['success'] = True
+                return result
+
+            # B3: Normal check-out
+            open_attendance.write({
+                'check_out': timestamp,
+            })
+            raw_log.write({
+                'state': 'processed',
+                'punch_type': '1',
+                'attendance_id': open_attendance.id,
+                'message': f'Check-out created ({hours_since:.2f}h worked)'
+            })
+            _logger.info(f"CHECK OUT: {employee.name} at {timestamp} ({hours_since:.2f}h)")
+            result['success'] = True
+            return result
+
+        except Exception as e: 
+            _logger.error(f"Error processing log {raw_log.id}: {e}", exc_info=True)
+            raw_log.write({
+                'state': 'error',
+                'message': str(e)[:200]
+            })
+            return result
+
+    def _handle_break_punch(self, raw_log, employee, punch_type, timestamp, open_attendance):
+        """Handle break start/end punches"""
+        result = {'success': False, 'ignored': False}
+
+        break_type = 'Break Out' if punch_type == '2' else 'Break In'
+
+        if not open_attendance: 
             raw_log.write({
                 'state': 'ignored',
-                'error_message': reason,
-                'processed_date': fields.Datetime.now()
+                'message': f'{break_type} ignored: No active check-in'
             })
-            return {'status': 'ignored', 'reason': reason}
+            result['ignored'] = True
+            return result
 
-        # CASE B2: Attendance is STALE -> Auto-close and create new CHECK IN
-        if time_since_checkin_hours > auto_close_hours: 
-            _logger.info(
-                f"[AUTO-CLOSE + CHECK IN] {employee.name} - "
-                f"Previous attendance {time_since_checkin_hours:.1f}h old, auto-closing"
-            )
-            self._auto_close_attendance(open_attendance, shift)
-            return self._create_checkin(
-                raw_log, employee, timestamp, shift,
-                note=f"Previous attendance auto-closed (was {time_since_checkin_hours:.1f}h old)"
-            )
-
-        # CASE B3: Valid -> This is a CHECK OUT
-        _logger.info(f"[CHECK OUT] {employee.name} at {timestamp} - Duration: {time_since_checkin_hours:.2f}h")
-        return self._create_checkout(raw_log, employee, timestamp, open_attendance, shift)
-
-    def _create_checkin(self, raw_log, employee, timestamp, shift=None, note=''):
-        """Create a CHECK IN attendance record and set punch_type to '0'"""
-        attendance_vals = {
-            'employee_id': employee.id,
-            'check_in': timestamp,
-            'device_id': raw_log.device_id.id,
-            'raw_log_id': raw_log.id,
-            'is_from_device': True,
-        }
-
-        if shift:
-            attendance_vals['shift_id'] = shift.id
-
-        if note:
-            attendance_vals['note'] = note
-
-        attendance = self.env['hr.attendance'].create(attendance_vals)
-
-        # UPDATE punch_type to CHECK IN ('0')
-        raw_log.write({
-            'state': 'processed',
-            'punch_type': '0',  # CHECK IN
-            'attendance_id': attendance.id,
-            'error_message': False,
-            'processed_date': fields.Datetime.now()
+        # Add to attendance notes
+        note = f"{break_type}: {timestamp.strftime('%H:%M')}"
+        current_note = open_attendance.note or ''
+        open_attendance.write({
+            'note': f"{current_note}\n{note}".strip()
         })
 
-        _logger.info(f"✅ CHECK-IN created for {employee.name} at {timestamp}")
-
-        return {'status': 'processed', 'action': 'checkin', 'attendance': attendance}
-
-    def _create_checkout(self, raw_log, employee, timestamp, attendance, shift=None, note=''):
-        """Create a CHECK OUT on existing attendance and set punch_type to '1'"""
-        work_hours = (timestamp - attendance.check_in).total_seconds() / 3600
-
-        update_vals = {
-            'check_out': timestamp,
-        }
-
-        if raw_log.device_id:
-            update_vals['device_id'] = raw_log.device_id.id
-
-        # Handle notes
-        existing_note = attendance.note or ''
-        if note:
-            update_vals['note'] = f"{existing_note}\n{note}".strip() if existing_note else note
-
-        # Calculate late/early/overtime status if shift exists
-        if shift:
-            self._calculate_attendance_status(attendance, timestamp, shift, update_vals)
-
-        attendance.write(update_vals)
-
-        # UPDATE punch_type to CHECK OUT ('1')
         raw_log.write({
             'state': 'processed',
-            'punch_type': '1',  # CHECK OUT
-            'attendance_id': attendance.id,
-            'error_message': False,
-            'processed_date': fields.Datetime.now()
+            'punch_type': punch_type,
+            'attendance_id': open_attendance.id,
+            'message': f'{break_type} recorded'
         })
 
-        _logger.info(f"✅ CHECK-OUT created for {employee.name} at {timestamp}. Duration: {work_hours:.2f}h")
+        _logger.info(f"{break_type}: {employee.name} at {timestamp}")
+        result['success'] = True
+        return result
 
-        return {'status': 'processed', 'action': 'checkout', 'attendance': attendance}
+    def _handle_overtime_punch(self, raw_log, employee, punch_type, timestamp, open_attendance, shift):
+        """Handle overtime start/end punches"""
+        result = {'success': False, 'ignored': False}
 
-    def _auto_close_attendance(self, attendance, shift=None):
-        """Auto-close a stale attendance record"""
-        if shift and shift.max_work_hours:
-            max_hours = shift.max_work_hours
+        ot_type = 'Overtime Start' if punch_type == '4' else 'Overtime End'
+
+        if open_attendance:
+            # Add to current attendance notes
+            note = f"{ot_type}: {timestamp.strftime('%H:%M')}"
+            current_note = open_attendance.note or ''
+            open_attendance.write({
+                'note': f"{current_note}\n{note}".strip()
+            })
+
+            raw_log.write({
+                'state': 'processed',
+                'punch_type': punch_type,
+                'attendance_id': open_attendance.id,
+                'message': f'{ot_type} recorded'
+            })
         else:
-            max_hours = float(self.env['ir.config_parameter'].sudo().get_param(
-                'attendance_gateway.max_work_duration', 8
-            ))
+            # No open attendance - create overtime check-in
+            if punch_type == '4':
+                attendance = self.env['hr.attendance'].create({
+                    'employee_id': employee.id,
+                    'check_in': timestamp,
+                    'device_id': raw_log.device_id.id,
+                    'shift_id': shift.id if shift else False,
+                    'is_from_device': True,
+                    'note': 'Overtime session'
+                })
+                raw_log.write({
+                    'state': 'processed',
+                    'punch_type': punch_type,
+                    'attendance_id': attendance.id,
+                    'message': 'Overtime check-in created'
+                })
+            else:
+                raw_log.write({
+                    'state': 'ignored',
+                    'message': 'Overtime End ignored: No active session'
+                })
+                result['ignored'] = True
+                return result
 
-        checkout_time = attendance.check_in + timedelta(hours=max_hours)
+        _logger.info(f"{ot_type}: {employee.name} at {timestamp}")
+        result['success'] = True
+        return result
 
-        attendance.write({
-            'check_out': checkout_time,
-            'attendance_status': 'auto_closed',
-            'note': f"{attendance.note or ''}\n⚠️ Auto-closed: Missing check-out. Set to {max_hours}h after check-in.".strip()
-        })
+    def _find_employee(self, device, badge_id):
+        """Find employee by badge ID"""
+        Employee = self.env['hr.employee']
+        company_domain = []
+        if device.company_id: 
+            company_domain = [('company_id', 'in', [device.company_id.id, False])]
 
-        _logger.warning(
-            f"⚠️ Auto-closed attendance for {attendance.employee_id.name}."
-            f"Check-in: {attendance.check_in}, Auto check-out: {checkout_time}"
-        )
-
-    def _calculate_attendance_status(self, attendance, checkout_time, shift, update_vals):
-        """Calculate attendance status based on shift rules"""
-        try:
-            timezone = attendance.device_id.timezone if attendance.device_id else 'UTC'
-            shift_times = shift.get_shift_times_for_date(attendance.check_in.date(), timezone)
-
-            # Check late check-in
-            if attendance.check_in > shift_times['late_checkin_until']:
-                update_vals['attendance_status'] = 'late'
-                late_seconds = (attendance.check_in - shift_times['shift_start']).total_seconds()
-                update_vals['late_minutes'] = max(0, int(late_seconds / 60))
-
-            # Check early leave
-            elif checkout_time < shift_times['early_checkout_from']:
-                update_vals['attendance_status'] = 'early_leave'
-                early_seconds = (shift_times['shift_end'] - checkout_time).total_seconds()
-                update_vals['early_leave_minutes'] = max(0, int(early_seconds / 60))
-
-            # Check overtime
-            elif shift.overtime_enabled:
-                work_hours = (checkout_time - attendance.check_in).total_seconds() / 3600
-                if work_hours > shift.overtime_threshold:
-                    update_vals['attendance_status'] = 'overtime'
-                    update_vals['overtime_hours'] = work_hours - shift.overtime_threshold
-
-        except Exception as e:
-            _logger.warning(f"Could not calculate attendance status: {str(e)}")
+        # Try different fields
+        for field in ['identification_id', 'barcode', 'pin']: 
+            if field in Employee._fields:
+                emp = Employee.search([(field, '=', badge_id)] + company_domain, limit=1)
+                if emp: 
+                    return emp
+        return None

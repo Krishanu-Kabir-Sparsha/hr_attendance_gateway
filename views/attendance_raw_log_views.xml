@@ -1,120 +1,100 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
+    <!-- Raw Log List -->
     <record id="view_attendance_raw_log_tree" model="ir.ui.view">
         <field name="name">attendance.raw.log.tree</field>
         <field name="model">attendance.raw.log</field>
         <field name="arch" type="xml">
-            <list string="Raw Logs"
-                  decoration-success="state=='processed'"
-                  decoration-danger="state=='error'"
-                  decoration-muted="state=='ignored'">
+            <list string="Punch Logs"
+                  decoration-success="state == 'processed'"
+                  decoration-danger="state == 'error'"
+                  decoration-muted="state == 'ignored'">
                 <field name="timestamp"/>
                 <field name="device_id"/>
                 <field name="device_user_id"/>
                 <field name="employee_id"/>
-                <field name="punch_type" 
-                       decoration-success="punch_type=='0'"
-                       decoration-info="punch_type=='1'"
-                       widget="badge"/>
+                <field name="punch_type" widget="badge"
+                       decoration-success="punch_type == '0'"
+                       decoration-info="punch_type == '1'"
+                       decoration-warning="punch_type in ['2','3']"
+                       decoration-primary="punch_type in ['4','5']"/>
                 <field name="state" widget="badge"/>
+                <field name="message" optional="show"/>
                 <field name="attendance_id" optional="show"/>
-                <field name="processed_date"/>
             </list>
         </field>
     </record>
 
+    <!-- Raw Log Form -->
     <record id="view_attendance_raw_log_form" model="ir.ui.view">
         <field name="name">attendance.raw.log.form</field>
         <field name="model">attendance.raw.log</field>
         <field name="arch" type="xml">
-            <form string="Raw Log">
+            <form string="Punch Log">
                 <header>
                     <button name="action_reprocess" string="Reprocess" type="object"
-                            invisible="state not in ['error','pending','ignored']" class="btn-primary"/>
-                    <button name="%(action_manual_attendance_wizard)d" string="Manual Override"
-                            type="action" invisible="state == 'processed'" class="btn-secondary"/>
+                            class="btn-primary"
+                            invisible="state == 'processed'"/>
                     <field name="state" widget="statusbar"/>
                 </header>
                 <sheet>
-                    <div class="oe_button_box" name="button_box">
-                        <button class="oe_stat_button" type="object" name="action_view_attendance"
-                                icon="fa-clock-o" invisible="not attendance_id">
-                            <div class="o_stat_info">
-                                <span class="o_stat_text">View Attendance</span>
-                            </div>
-                        </button>
-                    </div>
-
                     <group>
-                        <group string="Punch Information">
+                        <group string="Punch Details">
                             <field name="device_id"/>
                             <field name="device_user_id"/>
                             <field name="timestamp"/>
                             <field name="punch_type"/>
                         </group>
-                        <group string="Processing Result">
+                        <group string="Result">
                             <field name="employee_id"/>
                             <field name="attendance_id"/>
-                            <field name="processed_date"/>
+                            <field name="message"/>
                         </group>
                     </group>
-
-                    <group string="Message" invisible="not error_message">
-                        <field name="error_message" nolabel="1" readonly="1"/>
+                    <group string="Raw Data" invisible="not raw_data">
+                        <field name="raw_data" nolabel="1" readonly="1"/>
                     </group>
-
-                    <notebook>
-                        <page string="Raw Data" name="raw_data">
-                            <group>
-                                <field name="device_punch_type" string="Device Original Sent"/>
-                                <field name="raw_data" nolabel="1"/>
-                            </group>
-                        </page>
-                    </notebook>
                 </sheet>
             </form>
         </field>
     </record>
 
-    <!-- Search View -->
+    <!-- Search -->
     <record id="view_attendance_raw_log_search" model="ir.ui.view">
         <field name="name">attendance.raw.log.search</field>
         <field name="model">attendance.raw.log</field>
         <field name="arch" type="xml">
-            <search string="Raw Logs">
-                <field name="device_user_id"/>
+            <search string="Punch Logs">
                 <field name="employee_id"/>
+                <field name="device_user_id"/>
                 <field name="device_id"/>
-
+                
+                <filter string="Today" name="today" 
+                        domain="[('timestamp', '>=', context_today().strftime('%Y-%m-%d'))]"/>
+                <separator/>
                 <filter string="Processed" name="processed" domain="[('state', '=', 'processed')]"/>
                 <filter string="Errors" name="errors" domain="[('state', '=', 'error')]"/>
                 <filter string="Ignored" name="ignored" domain="[('state', '=', 'ignored')]"/>
                 <filter string="Pending" name="pending" domain="[('state', '=', 'pending')]"/>
-
                 <separator/>
-
-                <filter string="Check Ins" name="checkins" domain="[('punch_type', '=', '0')]"/>
-                <filter string="Check Outs" name="checkouts" domain="[('punch_type', '=', '1')]"/>
-
-                <separator/>
-
-                <filter string="Today" name="today" 
-                        domain="[('timestamp', '>=', (context_today()).strftime('%Y-%m-%d 00:00:00'))]"/>
-
+                <filter string="Check In" name="checkin" domain="[('punch_type', '=', '0')]"/>
+                <filter string="Check Out" name="checkout" domain="[('punch_type', '=', '1')]"/>
+                
                 <group expand="0" string="Group By">
-                    <filter string="Employee" name="group_employee" context="{'group_by': 'employee_id'}"/>
+                    <filter string="Employee" name="group_emp" context="{'group_by': 'employee_id'}"/>
                     <filter string="Device" name="group_device" context="{'group_by': 'device_id'}"/>
-                    <filter string="Punch Type" name="group_punch" context="{'group_by': 'punch_type'}"/>
                     <filter string="Status" name="group_state" context="{'group_by': 'state'}"/>
+                    <filter string="Type" name="group_type" context="{'group_by': 'punch_type'}"/>
                     <filter string="Date" name="group_date" context="{'group_by': 'timestamp: day'}"/>
                 </group>
             </search>
         </field>
     </record>
 
+    <!-- Action -->
     <record id="action_attendance_raw_log" model="ir.actions.act_window">
-        <field name="name">Raw Logs</field>
+        <field name="name">Punch Logs</field>
         <field name="res_model">attendance.raw.log</field>
         <field name="view_mode">list,form</field>
         <field name="context">{'search_default_today': 1}</field>

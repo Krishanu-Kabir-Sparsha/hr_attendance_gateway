@@ -42,10 +42,12 @@
         
         # THEN VIEWS
         'views/attendance_shift_views.xml',
+        # 'views/attendance_daily_punch_views.xml',
         'views/attendance_device_views.xml',
         'views/attendance_device_user_views.xml',
         'views/attendance_raw_log_views.xml',  # This references the wizard action
         'views/attendance_sync_log_views.xml',
+        'views/hr_attendance_views.xml',
         'views/hr_employee_views.xml',
         'views/res_config_settings_views.xml',
         'views/menus.xml',

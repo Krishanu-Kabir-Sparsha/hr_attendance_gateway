@@ -1,20 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <!-- Shift Tree View -->
+    <!-- Shift List View -->
     <record id="view_attendance_shift_tree" model="ir.ui.view">
         <field name="name">attendance.shift.tree</field>
         <field name="model">attendance.shift</field>
         <field name="arch" type="xml">
-            <list string="Shift Configurations">
+            <list string="Shifts">
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
                 <field name="code"/>
                 <field name="work_time_display" string="Work Hours"/>
-                <field name="min_punch_interval" string="Min Interval (min)"/>
-                <field name="auto_close_hours" string="Auto-close (hrs)"/>
+                <field name="expected_hours" widget="float_time"/>
+                <field name="late_after_minutes" string="Late After (min)"/>
+                <field name="overtime_after_hours" string="OT After (hrs)"/>
+                <field name="use_punch_slots"/>
                 <field name="is_default"/>
-                <field name="active"/>
             </list>
         </field>
     </record>
@@ -26,79 +27,71 @@
         <field name="arch" type="xml">
             <form string="Shift Configuration">
                 <sheet>
-                    <widget name="web_ribbon" title="Default" bg_color="text-bg-success" invisible="not is_default"/>
-                    <widget name="web_ribbon" title="Night Shift" bg_color="text-bg-info" invisible="not is_night_shift"/>
+                    <widget name="web_ribbon" title="Default" bg_color="text-bg-success" 
+                            invisible="not is_default"/>
 
                     <div class="oe_title">
                         <label for="name"/>
-                        <h1><field name="name" placeholder="e.g., Standard Day Shift"/></h1>
+                        <h1><field name="name" placeholder="e.g., Day Shift"/></h1>
                     </div>
 
                     <group>
-                        <group string="Basic Info">
+                        <group string="Basic">
                             <field name="code"/>
                             <field name="is_default"/>
-                            <field name="sequence"/>
                             <field name="active"/>
                             <field name="company_id" groups="base.group_multi_company"/>
                         </group>
-                        <group string="Expected Work Hours">
+                        <group string="Work Hours">
                             <field name="work_hour_from" widget="float_time"/>
                             <field name="work_hour_to" widget="float_time"/>
+                            <field name="expected_hours" widget="float_time" readonly="1"/>
                             <field name="is_night_shift" readonly="1"/>
                         </group>
                     </group>
 
                     <notebook>
-                        <page string="Punch Processing Rules" name="punch_rules">
-                            <div class="alert alert-info" role="alert">
-                                <strong>How Punch Processing Works:</strong>
-                                <ol>
-                                    <li><strong>First touch of the day</strong> = Check In</li>
-                                    <li><strong>Subsequent touches</strong> within minimum interval = Ignored (duplicate)</li>
-                                    <li><strong>Touch after minimum work duration</strong> = Check Out</li>
-                                    <li><strong>Open attendance older than auto-close time</strong> = Auto-close old + New Check In</li>
-                                </ol>
-                            </div>
+                        <page string="Attendance Rules" name="rules">
                             <group>
-                                <group string="Punch Interval">
-                                    <field name="min_punch_interval"/>
-                                    <div class="text-muted" colspan="2">
-                                        Punches within this many minutes of each other are treated as duplicates and ignored.
-                                    </div>
+                                <group string="Late / Early">
+                                    <field name="late_after_minutes"/>
+                                    <field name="early_leave_before_minutes"/>
+                                    <field name="half_day_hours"/>
                                 </group>
-                                <group string="Work Duration">
-                                    <field name="min_work_hours"/>
-                                    <field name="max_work_hours"/>
-                                    <field name="auto_close_hours"/>
+                                <group string="Overtime &amp; Auto-Close">
+                                    <field name="overtime_after_hours"/>
+                                    <field name="min_punch_gap_minutes"/>
+                                    <field name="auto_checkout_after_hours"/>
                                 </group>
                             </group>
                         </page>
 
-                        <page string="Late/Early Calculation" name="grace">
-                            <div class="alert alert-warning" role="alert">
-                                These settings are used to calculate if an employee was late or left early.
-                                They do NOT block check-in/out operations.
-                            </div>
+                        <page string="Punch Slots" name="slots">
                             <group>
-                                <group string="Grace Periods">
-                                    <field name="grace_period_checkin"/>
-                                    <field name="grace_period_checkout"/>
-                                </group>
-                                <group string="Allowed Windows">
-                                    <field name="early_checkin_allowed"/>
-                                    <field name="late_checkout_allowed"/>
-                                </group>
+                                <field name="use_punch_slots"/>
+                                <button name="create_default_slots" string="Create Default Slots"
+                                        type="object" class="btn-secondary"
+                                        invisible="use_punch_slots"
+                                        confirm="Create default punch slots? "/>
                             </group>
-                        </page>
+                            
+                            <field name="punch_slot_ids" invisible="not use_punch_slots">
+                                <list editable="bottom">
+                                    <field name="sequence" widget="handle"/>
+                                    <field name="name"/>
+                                    <field name="punch_type"/>
+                                    <field name="time_from" widget="float_time"/>
+                                    <field name="time_to" widget="float_time"/>
+                                    <field name="is_required"/>
+                                    <field name="active"/>
+                                </list>
+                            </field>
 
-                        <page string="Overtime" name="overtime">
-                            <group>
-                                <group>
-                                    <field name="overtime_enabled"/>
-                                    <field name="overtime_threshold" invisible="not overtime_enabled"/>
-                                </group>
-                            </group>
+                            <div class="alert alert-info mt-3" invisible="not use_punch_slots">
+                                <strong>How Slots Work:</strong> When an employee punches, 
+                                the system checks which time slot matches the current time 
+                                and assigns the corresponding punch type automatically.
+                            </div>
                         </page>
                     </notebook>
                 </sheet>
@@ -106,34 +99,11 @@
         </field>
     </record>
 
-    <!-- Shift Search View -->
-    <record id="view_attendance_shift_search" model="ir.ui.view">
-        <field name="name">attendance.shift.search</field>
-        <field name="model">attendance.shift</field>
-        <field name="arch" type="xml">
-            <search string="Shift Configurations">
-                <field name="name"/>
-                <field name="code"/>
-                <filter string="Default" name="default" domain="[('is_default', '=', True)]"/>
-                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
-            </search>
-        </field>
-    </record>
-
-    <!-- Shift Action -->
+    <!-- Action -->
     <record id="action_attendance_shift" model="ir.actions.act_window">
-        <field name="name">Shift Configurations</field>
+        <field name="name">Shifts</field>
         <field name="res_model">attendance.shift</field>
         <field name="view_mode">list,form</field>
-        <field name="help" type="html">
-            <p class="o_view_nocontent_smiling_face">
-                Create your first shift configuration
-            </p>
-            <p>
-                Configure how attendance punches are processed - minimum intervals, 
-                auto-close times, and late/early calculation rules.
-            </p>
-        </field>
     </record>
 
 </odoo>

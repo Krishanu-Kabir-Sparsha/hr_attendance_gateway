@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <!-- Attendance List - Enhanced -->
+    <record id="view_hr_attendance_tree_enhanced" model="ir.ui.view">
+        <field name="name">hr.attendance.tree.enhanced</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" ref="hr_attendance.view_attendance_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//list" position="attributes">
+                <attribute name="decoration-success">status == 'on_time'</attribute>
+                <attribute name="decoration-warning">status in ['late', 'early_leave', 'half_day']</attribute>
+                <attribute name="decoration-info">status == 'overtime'</attribute>
+                <attribute name="decoration-muted">status == 'auto_closed'</attribute>
+            </xpath>
+            <xpath expr="//field[@name='worked_hours']" position="after">
+                <field name="status" widget="badge"
+                       decoration-success="status == 'on_time'"
+                       decoration-warning="status in ['late', 'early_leave', 'half_day']"
+                       decoration-info="status == 'overtime'"
+                       decoration-danger="status == 'auto_closed'"/>
+                <field name="late_minutes" string="Late (min)" optional="show"/>
+                <field name="early_leave_minutes" string="Early (min)" optional="show"/>
+                <field name="overtime_minutes" string="OT (min)" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Attendance Form - Enhanced -->
+    <record id="view_hr_attendance_form_enhanced" model="ir.ui.view">
+        <field name="name">hr.attendance.form.enhanced</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group" position="after">
+                <group string="Status Details">
+                    <group>
+                        <field name="shift_id"/>
+                        <field name="status" readonly="1"/>
+                        <field name="is_from_device" readonly="1"/>
+                    </group>
+                    <group>
+                        <field name="late_minutes" readonly="1" 
+                               invisible="late_minutes == 0"/>
+                        <field name="early_leave_minutes" readonly="1"
+                               invisible="early_leave_minutes == 0"/>
+                        <field name="overtime_minutes" readonly="1"
+                               invisible="overtime_minutes == 0"/>
+                        <field name="break_minutes"/>
+                    </group>
+                </group>
+                <group string="Notes" invisible="not note">
+                    <field name="note" nolabel="1" readonly="1"/>
+                </group>
+                <group string="Device Info" invisible="not device_id">
+                    <field name="device_id" readonly="1"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Search Filter - Enhanced -->
+    <record id="view_hr_attendance_filter_enhanced" model="ir.ui.view">
+        <field name="name">hr.attendance.filter.enhanced</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" ref="hr_attendance.hr_attendance_view_filter"/>
+        <field name="arch" type="xml">
+            <xpath expr="//search" position="inside">
+                <separator/>
+                <filter string="On Time" name="on_time" domain="[('status', '=', 'on_time')]"/>
+                <filter string="Late" name="late" domain="[('status', '=', 'late')]"/>
+                <filter string="Early Leave" name="early_leave" domain="[('status', '=', 'early_leave')]"/>
+                <filter string="Overtime" name="overtime" domain="[('status', '=', 'overtime')]"/>
+                <filter string="Half Day" name="half_day" domain="[('status', '=', 'half_day')]"/>
+                <filter string="Auto Closed" name="auto_closed" domain="[('status', '=', 'auto_closed')]"/>
+                <separator/>
+                <filter string="From Device" name="from_device" domain="[('is_from_device', '=', True)]"/>
+                <separator/>
+                <group expand="0" string="Group By">
+                    <filter string="Status" name="group_status" context="{'group_by': 'status'}"/>
+                    <filter string="Shift" name="group_shift" context="{'group_by': 'shift_id'}"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+</odoo>

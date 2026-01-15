@@ -9,6 +9,8 @@ access_attendance_sync_log_user,attendance.sync.log user,model_attendance_sync_l
 access_attendance_sync_log_manager,attendance.sync.log manager,model_attendance_sync_log,group_attendance_gateway_manager,1,1,1,1
 access_attendance_shift_user,attendance.shift user,model_attendance_shift,group_attendance_gateway_user,1,0,0,0
 access_attendance_shift_manager,attendance.shift manager,model_attendance_shift,group_attendance_gateway_manager,1,1,1,1
+access_attendance_punch_slot_user,attendance.punch.slot user,model_attendance_punch_slot,group_attendance_gateway_user,1,0,0,0
+access_attendance_punch_slot_manager,attendance.punch.slot manager,model_attendance_punch_slot,group_attendance_gateway_manager,1,1,1,1
 access_sync_attendance_wizard,sync.attendance.wizard,model_sync_attendance_wizard,group_attendance_gateway_user,1,1,1,1
 access_device_test_wizard,device.test.wizard,model_device_test_wizard,group_attendance_gateway_user,1,1,1,1
 access_user_mapping_wizard,user.mapping.wizard,model_user_mapping_wizard,group_attendance_gateway_manager,1,1,1,1

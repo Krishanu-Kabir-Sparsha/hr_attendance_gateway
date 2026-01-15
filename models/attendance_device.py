@@ -1,5 +1,5 @@
 from odoo import models, fields, api, _
-from odoo.exceptions import UserError, ValidationError
+from odoo.exceptions import UserError
 from datetime import timedelta
 import logging
 import re
@@ -43,7 +43,7 @@ class AttendanceDevice(models.Model):
 
     # Webhook
     webhook_token = fields.Char(string='Webhook Token', readonly=True, copy=False)
-    webhook_url = fields.Char(string='Webhook URL', compute='_compute_webhook_url', store=False)
+    webhook_url = fields.Char(string='Webhook URL', compute='_compute_webhook_url')
 
     # Sync Configuration
     sync_mode = fields.Selection([
@@ -65,19 +65,14 @@ class AttendanceDevice(models.Model):
         ('error', 'Error'),
     ], string='Status', default='draft', tracking=True)
 
-    is_online = fields.Boolean(string='Online', compute='_compute_is_online', store=False)
+    is_online = fields.Boolean(string='Online', compute='_compute_is_online')
 
     # Timezone
-    timezone = fields.Selection(
-        selection='_get_timezones',
-        string='Device Timezone',
-        default='UTC',
-        required=True
-    )
+    timezone = fields.Selection(selection='_get_timezones', string='Device Timezone', default='UTC', required=True)
 
     # Statistics
-    total_users = fields.Integer(string='Total Users', compute='_compute_statistics', store=False)
-    total_logs = fields.Integer(string='Total Logs', compute='_compute_statistics', store=False)
+    total_users = fields.Integer(string='Total Users', compute='_compute_statistics')
+    total_logs = fields.Integer(string='Total Logs', compute='_compute_statistics')
     last_log_date = fields.Datetime(string='Last Log Date', readonly=True)
 
     # Relations
@@ -109,7 +104,7 @@ class AttendanceDevice(models.Model):
     @api.depends('webhook_token')
     def _compute_webhook_url(self):
         base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
-        for record in self:
+        for record in self: 
             if record.webhook_token:
                 record.webhook_url = f"{base_url}/attendance/webhook/{record.webhook_token}"
             else:
@@ -117,112 +112,57 @@ class AttendanceDevice(models.Model):
 
     def _compute_is_online(self):
         for record in self: 
-            try:
-                record.is_online = record._check_device_online()
-            except: 
-                record.is_online = False
+            record.is_online = False
+            if record.state == 'active':
+                try:
+                    adapter = record._get_adapter()
+                    record.is_online = adapter.test_connection()
+                except Exception: 
+                    pass
 
     def _compute_statistics(self):
-        for record in self:
+        for record in self: 
             record.total_users = len(record.device_user_ids)
-            record.total_logs = len(record.raw_log_ids)
-
-    def _check_device_online(self):
-        """Check if device is online"""
-        self.ensure_one()
-        if self.state != 'active':
-            return False
-        try:
-            adapter = self._get_adapter()
-            return adapter.test_connection()
-        except Exception as e:
-            _logger.warning(f"Device {self.name} connection check failed: {str(e)}")
-            return False
+            record.total_logs = self.env['attendance.raw.log'].search_count([('device_id', '=', record.id)])
 
     def _get_adapter(self):
-        """Factory method to get appropriate adapter"""
+        """Get device adapter"""
         adapter_map = {
             'zkteco': 'ZKTecoAdapter',
-            'hikvision': 'HikvisionAdapter',
-            'suprema': 'SupremaAdapter',
             'api_rest': 'RestAPIAdapter',
-            'api_soap': 'SoapAdapter',
             'webhook': 'WebhookAdapter',
         }
 
         adapter_class_name = adapter_map.get(self.device_type)
-        if not adapter_class_name:
+        if not adapter_class_name: 
             raise UserError(_("Unsupported device type: %s") % self.device_type)
 
-        # Import from adapters module
         from odoo.addons.hr_attendance_gateway import adapters
         adapter_class = getattr(adapters, adapter_class_name, None)
 
-        if not adapter_class: 
+        if not adapter_class:
             raise UserError(_("Adapter class %s not found") % adapter_class_name)
 
         return adapter_class(self)
-
-    def _find_employee_by_badge(self, badge_id):
-        """
-        Find employee by badge ID using multiple strategies.
-        Safely checks if fields exist before searching.
-        
-        : param badge_id: The badge/ID to search for
-        :return: tuple (employee record or None, match_method string or None)
-        """
-        Employee = self.env['hr.employee']
-        employee_fields = Employee._fields
-        
-        # Strategy 1: identification_id (Standard Odoo field - Employee ID/Badge)
-        if 'identification_id' in employee_fields:
-            employee = Employee.search([
-                ('identification_id', '=', badge_id),
-                ('company_id', 'in', [self.company_id.id, False])
-            ], limit=1)
-            if employee: 
-                return employee, 'identification_id'
-        
-        # Strategy 2: barcode (May exist if hr_attendance is installed)
-        if 'barcode' in employee_fields:
-            employee = Employee.search([
-                ('barcode', '=', badge_id),
-                ('company_id', 'in', [self.company_id.id, False])
-            ], limit=1)
-            if employee:
-                return employee, 'barcode'
-        
-        # Strategy 3: pin (Attendance PIN - if exists)
-        if 'pin' in employee_fields:
-            employee = Employee.search([
-                ('pin', '=', badge_id),
-                ('company_id', 'in', [self.company_id.id, False])
-            ], limit=1)
-            if employee:
-                return employee, 'pin'
-        
-        return None, None
 
     def action_test_connection(self):
         """Test device connection"""
         self.ensure_one()
         try:
             adapter = self._get_adapter()
-            result = adapter.test_connection()
-            if result:
+            if adapter.test_connection():
                 return {
                     'type': 'ir.actions.client',
                     'tag': 'display_notification',
                     'params': {
                         'title': _('Success'),
-                        'message': _('Device connection successful!'),
+                        'message': _('Connection successful! '),
                         'type': 'success',
-                        'sticky': False,
                     }
                 }
             else:
                 raise UserError(_("Connection test failed"))
-        except Exception as e:
+        except Exception as e: 
             raise UserError(_("Connection failed: %s") % str(e))
 
     def action_sync_now(self):
@@ -241,42 +181,41 @@ class AttendanceDevice(models.Model):
         }
 
     def action_fetch_users(self):
-        """Fetch users from device with smart Badge ID extraction"""
+        """Fetch users from device"""
         self.ensure_one()
         try:
             adapter = self._get_adapter()
             users = adapter.get_users()
 
-            created_count = 0
-            updated_count = 0
-            auto_mapped_count = 0
+            created = 0
+            updated = 0
 
-            for user_data in users:
-                device_user_id = str(user_data['device_user_id'])
+            for user_data in users: 
+                device_user_id = str(user_data.get('device_user_id', ''))
+                if not device_user_id:
+                    continue
+
+                # Try to extract badge from name
                 device_user_name = user_data.get('name', '')
-
-                # Try to extract badge ID from user name (e.g., "NN-60910013")
-                extracted_badge = None
+                extracted = None
                 if device_user_name:
-                    numbers = re.findall(r'\d{6,}', device_user_name)  # Find numbers with 6+ digits
+                    numbers = re.findall(r'\d{6,}', device_user_name)
                     if numbers:
-                        extracted_badge = numbers[0]
+                        extracted = numbers[0]
 
-                # Use extracted badge as device_user_id if found
-                final_device_user_id = extracted_badge or device_user_id
+                final_id = extracted or device_user_id
 
-                # Check if mapping already exists
                 existing = self.env['attendance.device.user'].search([
                     ('device_id', '=', self.id),
-                    ('device_user_id', '=', final_device_user_id)
+                    ('device_user_id', '=', final_id)
                 ], limit=1)
 
-                # Try to auto-match employee using safe method
-                employee, match_method = self._find_employee_by_badge(final_device_user_id)
+                # Try auto-match
+                employee = self._find_employee_by_badge(final_id)
 
                 vals = {
                     'device_id': self.id,
-                    'device_user_id': final_device_user_id,
+                    'device_user_id': final_id,
                     'device_user_name': device_user_name,
                     'card_number': user_data.get('card_number') or '',
                 }
@@ -285,60 +224,55 @@ class AttendanceDevice(models.Model):
                     vals.update({
                         'employee_id': employee.id,
                         'mapping_confidence': 'high',
-                        'mapping_method': f'Auto-matched during fetch ({match_method})'
+                        'mapping_method': 'Auto-matched during fetch'
                     })
-                    auto_mapped_count += 1
 
                 if not existing:
                     self.env['attendance.device.user'].create(vals)
-                    created_count += 1
-                else:
-                    # Update if employee found but not mapped
-                    if employee and not existing.employee_id:
-                        existing.write({
-                            'employee_id': employee.id,
-                            'mapping_confidence': 'high',
-                            'mapping_method': f'Auto-matched during fetch ({match_method})'
-                        })
-                        updated_count += 1
-
-            message = _('Fetched %d users from device\n') % len(users)
-            message += _('- Created: %d new mappings\n') % created_count
-            if updated_count > 0:
-                message += _('- Updated: %d mappings\n') % updated_count
-            if auto_mapped_count > 0:
-                message += _('- Auto-mapped: %d employees') % auto_mapped_count
+                    created += 1
+                elif employee and not existing.employee_id:
+                    existing.write({
+                        'employee_id': employee.id,
+                        'mapping_confidence': 'high',
+                        'mapping_method': 'Auto-matched during fetch'
+                    })
+                    updated += 1
 
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
                 'params': {
                     'title': _('Success'),
-                    'message': message,
+                    'message': _('Fetched %d users. Created: %d, Updated: %d') % (len(users), created, updated),
                     'type': 'success',
-                    'sticky': True,
                 }
             }
-        except Exception as e:
-            _logger.error(f"Failed to fetch users from device {self.name}: {str(e)}", exc_info=True)
+        except Exception as e: 
             raise UserError(_("Failed to fetch users: %s") % str(e))
 
+    def _find_employee_by_badge(self, badge_id):
+        """Find employee by badge ID"""
+        Employee = self.env['hr.employee']
+        company_domain = [('company_id', 'in', [self.company_id.id, False])] if self.company_id else []
+
+        for field in ['identification_id', 'barcode', 'pin']:
+            if field in Employee._fields:
+                emp = Employee.search([(field, '=', badge_id)] + company_domain, limit=1)
+                if emp: 
+                    return emp
+        return None
+
     def action_activate(self):
-        """Activate device"""
-        for record in self:
-            record.write({'state': 'active'})
+        self.write({'state': 'active'})
 
     def action_deactivate(self):
-        """Deactivate device"""
-        for record in self:
-            record.write({'state': 'inactive'})
+        self.write({'state': 'inactive'})
 
     def action_view_logs(self):
-        """View raw logs"""
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
-            'name': _('Raw Logs'),
+            'name': _('Punch Logs'),
             'res_model': 'attendance.raw.log',
             'view_mode': 'list,form',
             'domain': [('device_id', '=', self.id)],
@@ -346,41 +280,35 @@ class AttendanceDevice(models.Model):
         }
 
     def action_view_sync_logs(self):
-        """View sync logs"""
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
-            'name': _('Sync Logs'),
+            'name': _('Sync History'),
             'res_model': 'attendance.sync.log',
             'view_mode': 'list,form',
             'domain': [('device_id', '=', self.id)],
-            'context': {'default_device_id': self.id}
         }
 
     @api.model
     def cron_sync_attendance(self):
-        """Called by cron job to sync all active devices"""
+        """Cron job to sync all active devices"""
         devices = self.search([
             ('state', '=', 'active'),
             ('auto_sync', '=', True),
             ('sync_mode', 'in', ['pull', 'both'])
         ])
 
-        for device in devices:
+        for device in devices: 
             try:
                 device._sync_attendance_logs()
             except Exception as e:
-                _logger.error(f"Sync failed for device {device.name}: {str(e)}")
-                device.message_post(
-                    body=_("Automatic sync failed: %s") % str(e),
-                    subject=_("Attendance Sync Error")
-                )
+                _logger.error(f"Sync failed for {device.name}: {e}")
+                device.message_post(body=_("Sync failed: %s") % str(e))
 
     def _sync_attendance_logs(self):
         """Core sync logic"""
         self.ensure_one()
 
-        # Create sync log
         sync_log = self.env['attendance.sync.log'].create({
             'device_id': self.id,
             'sync_date': fields.Datetime.now(),
@@ -389,34 +317,30 @@ class AttendanceDevice(models.Model):
 
         try:
             adapter = self._get_adapter()
-
-            # Get logs from device
             from_date = self.last_sync_date or (fields.Datetime.now() - timedelta(days=7))
             raw_logs = adapter.get_attendance_logs(from_date=from_date)
 
-            # Process logs
             processor = self.env['attendance.processor']
             result = processor.process_raw_logs(self, raw_logs)
 
-            # Update sync log
             sync_log.write({
-                'state': 'success',
+                'state': 'success' if result['failed'] == 0 else 'partial',
                 'records_fetched': result['fetched'],
                 'records_processed': result['processed'],
                 'records_failed': result['failed'],
                 'end_date': fields.Datetime.now()
             })
 
-            # Update device
             self.write({
                 'last_sync_date': fields.Datetime.now(),
                 'state': 'active'
             })
 
-            _logger.info(f"Sync successful for device {self.name}: {result}")
+            _logger.info(f"Sync completed for {self.name}: {result}")
+            return result
 
-        except Exception as e: 
-            _logger.error(f"Sync error for device {self.name}: {str(e)}")
+        except Exception as e:
+            _logger.error(f"Sync error for {self.name}: {e}")
             sync_log.write({
                 'state': 'error',
                 'error_message': str(e),
