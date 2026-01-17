@@ -9,7 +9,8 @@
             <list string="Punch Logs"
                   decoration-success="state == 'processed'"
                   decoration-danger="state == 'error'"
-                  decoration-muted="state == 'ignored'">
+                  decoration-muted="state == 'ignored'"
+                  decoration-warning="state == 'pending'">
                 <field name="timestamp"/>
                 <field name="device_id"/>
                 <field name="device_user_id"/>
@@ -20,7 +21,7 @@
                        decoration-warning="punch_type in ['2','3']"
                        decoration-primary="punch_type in ['4','5']"/>
                 <field name="state" widget="badge"/>
-                <field name="message" optional="show"/>
+                <field name="message"/>
                 <field name="attendance_id" optional="show"/>
             </list>
         </field>
@@ -36,9 +37,21 @@
                     <button name="action_reprocess" string="Reprocess" type="object"
                             class="btn-primary"
                             invisible="state == 'processed'"/>
+                    <button name="action_force_checkin" string="Force Check-In" type="object"
+                            class="btn-warning"
+                            invisible="state == 'processed'"
+                            confirm="This will close any open attendance and create a new check-in. Continue? "/>
                     <field name="state" widget="statusbar"/>
                 </header>
                 <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_attendance" type="object" 
+                                class="oe_stat_button" icon="fa-clock-o"
+                                invisible="not attendance_id">
+                            <span class="o_stat_text">View Attendance</span>
+                        </button>
+                    </div>
+                    
                     <group>
                         <group string="Punch Details">
                             <field name="device_id"/>
@@ -52,7 +65,8 @@
                             <field name="message"/>
                         </group>
                     </group>
-                    <group string="Raw Data" invisible="not raw_data">
+                    
+                    <group string="Debug Info" invisible="not raw_data">
                         <field name="raw_data" nolabel="1" readonly="1"/>
                     </group>
                 </sheet>
@@ -85,7 +99,7 @@
                     <filter string="Employee" name="group_emp" context="{'group_by': 'employee_id'}"/>
                     <filter string="Device" name="group_device" context="{'group_by': 'device_id'}"/>
                     <filter string="Status" name="group_state" context="{'group_by': 'state'}"/>
-                    <filter string="Type" name="group_type" context="{'group_by': 'punch_type'}"/>
+                    <filter string="Punch Type" name="group_type" context="{'group_by': 'punch_type'}"/>
                     <filter string="Date" name="group_date" context="{'group_by': 'timestamp: day'}"/>
                 </group>
             </search>

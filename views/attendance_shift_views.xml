@@ -69,10 +69,10 @@
                         <page string="Punch Slots" name="slots">
                             <group>
                                 <field name="use_punch_slots"/>
-                                <button name="create_default_slots" string="Create Default Slots"
+                                <button name="action_create_default_slots" string="Create Default Slots"
                                         type="object" class="btn-secondary"
                                         invisible="use_punch_slots"
-                                        confirm="Create default punch slots? "/>
+                                        confirm="This will create default punch slots based on your shift hours. Continue?"/>
                             </group>
                             
                             <field name="punch_slot_ids" invisible="not use_punch_slots">
@@ -88,9 +88,25 @@
                             </field>
 
                             <div class="alert alert-info mt-3" invisible="not use_punch_slots">
-                                <strong>How Slots Work:</strong> When an employee punches, 
-                                the system checks which time slot matches the current time 
-                                and assigns the corresponding punch type automatically.
+                                <strong>How Punch Slots Work:</strong>
+                                <p class="mb-1">When an employee punches, the system checks which time slot matches the current time and assigns the corresponding punch type automatically.</p>
+                                <ul class="mb-0">
+                                    <li><strong>Check In (0):</strong> Creates new attendance if no open one exists</li>
+                                    <li><strong>Check Out (1):</strong> Closes the open attendance</li>
+                                    <li><strong>Break Out/In (2,3):</strong> Records break times in notes</li>
+                                    <li><strong>Overtime (4,5):</strong> Records overtime sessions</li>
+                                </ul>
+                                <p class="mt-2 mb-0"><em>If no slot matches the punch time, the system uses toggle logic (no open attendance = check-in, has open = check-out).</em></p>
+                            </div>
+                            
+                            <div class="alert alert-warning mt-3" invisible="use_punch_slots">
+                                <strong>Simple Toggle Mode (Current):</strong>
+                                <p class="mb-0">Punch type is determined by attendance state: </p>
+                                <ul class="mb-0">
+                                    <li>No open attendance → <strong>Check In</strong></li>
+                                    <li>Has open attendance → <strong>Check Out</strong></li>
+                                </ul>
+                                <p class="mt-2 mb-0">Enable "Use Time-Based Punch Slots" above to use time-based punch type determination.</p>
                             </div>
                         </page>
                     </notebook>
@@ -99,11 +115,35 @@
         </field>
     </record>
 
+    <!-- Search View -->
+    <record id="view_attendance_shift_search" model="ir.ui.view">
+        <field name="name">attendance.shift.search</field>
+        <field name="model">attendance.shift</field>
+        <field name="arch" type="xml">
+            <search string="Shifts">
+                <field name="name"/>
+                <field name="code"/>
+                <filter string="Default" name="default" domain="[('is_default', '=', True)]"/>
+                <filter string="Using Slots" name="with_slots" domain="[('use_punch_slots', '=', True)]"/>
+                <separator/>
+                <filter string="Archived" name="inactive" domain="[('active', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
     <!-- Action -->
     <record id="action_attendance_shift" model="ir.actions.act_window">
         <field name="name">Shifts</field>
         <field name="res_model">attendance.shift</field>
         <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first shift configuration
+            </p>
+            <p>
+                Define work hours, late/early rules, and optionally set up time-based punch slots.
+            </p>
+        </field>
     </record>
 
 </odoo>
